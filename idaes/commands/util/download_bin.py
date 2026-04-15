@@ -77,9 +77,26 @@ def _get_arch_and_platform(fd, platform):
     return arch, platform
 
 
+def _map_legacy_distro(platform, release):
+    """
+    Map canonical distro names to the closest supported pre-4.x build target.
+    """
+    if release_major(release) >= 4:
+        return platform
+
+    legacy_distro_map = {
+        "ubuntu2404": "ubuntu2204",
+        "el9": "ubuntu2204",
+    }
+    return legacy_distro_map.get(platform, platform)
+
+
 def _get_release_platform(platform, release):
     # Check if platform (OS) maps to another platform
     platform = idaes.config.canonical_distro(platform)
+
+    # Apply release-specific fallback for older binary releases
+    platform = _map_legacy_distro(platform, release)
 
     # Get machine type (e.g. x86_64, ...)
     mach = idaes.config.canonical_arch(machine(), release=release)
