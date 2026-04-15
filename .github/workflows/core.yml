@@ -136,7 +136,7 @@ jobs:
 
   new-release-pytest:
     # description: Run pytest with dev dependencies with new releases
-    name: pytest (py${{ matrix.python-version }}/${{ matrix.os }})
+    name: new-release-pytest (py${{ matrix.python-version }}/${{ matrix.os }})
     runs-on: ${{ matrix.runner-image }}
     needs: [code-formatting, spell-check]
     strategy:
