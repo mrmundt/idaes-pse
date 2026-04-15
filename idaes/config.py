@@ -23,7 +23,7 @@ from pyomo.common.config import Bool
 
 _log = logging.getLogger(__name__)
 # Default release version if no options provided for get-extensions
-default_binary_release = "3.4.2"
+default_binary_release = "4.0.0rc2"
 # Where to download releases from get-extensions
 release_base_url = "https://github.com/IDAES/idaes-ext/releases/download"
 # Where to get release checksums
@@ -33,47 +33,60 @@ release_checksum_url = (
 # This is a list of platforms with builds
 base_platforms = (
     "darwin-aarch64",
+    "darwin-arm64",
     "darwin-x86_64",
     "el7-x86_64",
     "el8-x86_64",
     "el8-aarch64",
+    "el9-x86_64",
+    "el9-aarch64",
     "ubuntu1804-x86_64",
     "ubuntu1804-aarch64",
     "ubuntu2004-x86_64",
     "ubuntu2004-aarch64",
     "ubuntu2204-x86_64",
     "ubuntu2204-aarch64",
+    "ubuntu2404-x86_64",
+    "ubuntu2404-aarch64",
     "windows-x86_64",
 )
 # Map some platform names to others for get-extensions
 binary_distro_map = {
     "macos": "darwin",
-    "el9": "ubuntu2204",
     "rhel7": "el7",
     "rhel8": "el8",
+    "rhel9": "el9",
     "scientific7": "el7",
     "centos7": "el7",
     "centos8": "el8",
+    "centos9": "el9",
     "rocky8": "el8",
+    "rocky9": "el9",
     "almalinux8": "el8",
+    "almalinux9": "el9",
     "debian9": "el7",
     "debian10": "el8",
+    "debian11": "ubuntu2004",
+    "debian12": "ubuntu2204",
+    "debian13": "ubuntu2404",
     "linuxmint20": "ubuntu2004",
+    "linuxmint21": "ubuntu2204",
+    "linuxmint22": "ubuntu2404",
     "kubuntu1804": "ubuntu1804",
     "kubuntu2004": "ubuntu2004",
     "kubuntu2204": "ubuntu2204",
+    "kubuntu2404": "ubuntu2404",
     "xubuntu1804": "ubuntu1804",
     "xubuntu2004": "ubuntu2004",
     "xubuntu2204": "ubuntu2204",
+    "xubuntu2404": "ubuntu2404",
     "pop22": "ubuntu2204",
-    "ubuntu2404": "ubuntu2204",
 }
 # Machine map
 binary_arch_map = {
     "x64": "x86_64",
     "intel64": "x86_64",
     "amd64": "x86_64",
-    "arm64": "aarch64",
 }
 # Set of extra binary packages and basic build platform where available
 extra_binaries = {
@@ -98,18 +111,36 @@ default_uom = {
 }
 
 
-def canonical_arch(arch):
+def release_major(release):
+    return int(release.split(".", maxsplit=1)[0])
+
+
+def canonical_arch(arch, release=None):
     """Get the official machine type in {x86_64, aarch64} if possible, otherwise
     just return arch.lower().
 
     Args:
         arch (str): machine type string usually from platform.machine()
+        release (str): to support the new major release, this is an
+                       optional argument to allow more dynamic assignment
+                       (specifically for MacOS)
 
     Returns (str):
         Canonical machine type used by the binary package names.
     """
     arch = arch.lower()
-    return binary_arch_map.get(arch, arch)
+
+    if arch in binary_arch_map:
+        return binary_arch_map[arch]
+
+    major = release_major(release) if release is not None else None
+
+    if arch == "arm64":
+        if major is not None and major >= 4:
+            return "arm64"
+        return "aarch64"
+
+    return arch
 
 
 def canonical_distro(dist):
@@ -738,7 +769,7 @@ def setup_environment(bin_directory, use_idaes_solvers):
     Set environment variables for the IDAES session.
 
     Args:
-        bin_directory: directory to find idaes libraries and executables
+        bin_directory: directory to find idaes libraries and executables.
         use_idaes_solvers: If true look first in the idaes bin directory for
                            executables if false look last in the idaes bin
                            directory for executables.
@@ -748,16 +779,37 @@ def setup_environment(bin_directory, use_idaes_solvers):
     """
     if bin_directory is None:
         return
+    # With the newest IDAES solvers (4.x+), they aren't in a flat bin structure.
+    # They follow a standard install prefix structure of bin, lib, share, etc.
+    # So we need to step up one level to define the lib_directory.
+    lib_directory = os.path.join(os.path.dirname(bin_directory), "lib")
+    lib_directory_exists = os.path.isdir(lib_directory)
     oe = orig_environ
     if use_idaes_solvers:
-        os.environ["PATH"] = os.pathsep.join([bin_directory, oe.get("PATH", "")])
+        # Windows needs lib_directory added to the PATH, if it exists.
+        # This is a minimally invasive way to do this that accounts for both
+        # old-structure and new-structure solvers.
+        if os.name == "nt" and lib_directory_exists:
+            os.environ["PATH"] = os.pathsep.join(
+                [bin_directory, lib_directory, oe.get("PATH", "")]
+            )
+        else:
+            os.environ["PATH"] = os.pathsep.join([bin_directory, oe.get("PATH", "")])
     else:
-        os.environ["PATH"] = os.pathsep.join([oe.get("PATH", ""), bin_directory])
+        if os.name == "nt" and lib_directory_exists:
+            os.environ["PATH"] = os.pathsep.join(
+                [oe.get("PATH", ""), bin_directory, lib_directory]
+            )
+        else:
+            os.environ["PATH"] = os.pathsep.join([oe.get("PATH", ""), bin_directory])
+
     if os.name != "nt":  # If not Windows set lib search path, Windows uses PATH
+        if not lib_directory_exists:
+            lib_directory = bin_directory
         os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [oe.get("LD_LIBRARY_PATH", ""), bin_directory]
+            [oe.get("LD_LIBRARY_PATH", ""), lib_directory]
         )
         # This is for macOS, but won't hurt other UNIX
         os.environ["DYLD_LIBRARY_PATH"] = os.pathsep.join(
-            [oe.get("DYLD_LIBRARY_PATH", ""), bin_directory]
+            [oe.get("DYLD_LIBRARY_PATH", ""), lib_directory]
         )

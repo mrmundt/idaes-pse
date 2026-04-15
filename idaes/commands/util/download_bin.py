@@ -27,7 +27,7 @@ from pyomo.common.download import FileDownloader
 
 import idaes
 import idaes.logger as idaeslog
-from idaes.config import extra_binaries
+from idaes.config import release_major, base_platforms
 
 _log = idaeslog.getLogger(__name__)
 _release_base_url = idaes.config.release_base_url
@@ -77,12 +77,12 @@ def _get_arch_and_platform(fd, platform):
     return arch, platform
 
 
-def _get_release_platform(platform):
+def _get_release_platform(platform, release):
     # Check if platform (OS) maps to another platform
     platform = idaes.config.canonical_distro(platform)
 
     # Get machine type (e.g. x86_64, ...)
-    mach = idaes.config.canonical_arch(machine())
+    mach = idaes.config.canonical_arch(machine(), release=release)
 
     # full platform name
     platform = f"{platform}-{mach}"
@@ -152,7 +152,54 @@ def _get_checksums(fd, to_path, release, nochecksum):
     return _read_checksum_file(check_to)
 
 
-def _create_download_package(platform, to_path, url, extra, extras_only, library_only):
+def _supported_extra_binaries(release):
+    major = release_major(release)
+    if major >= 4:
+        return {}
+    return {
+        "petsc": base_platforms,
+    }
+
+
+def _normalize_extras(extra, release, platform=None):
+    """
+    Filter requested extras to those supported for the given release,
+    optionally also filtering by platform.
+    This is mostly to support the 4.x series.
+    """
+    extra = tuple(extra)
+
+    if release_major(release) >= 4 and "petsc" in extra:
+        _log.info(
+            "Ignoring extra 'petsc' for IDAES %s: PETSc is included in the base package.",
+            release,
+        )
+
+    supported = _supported_extra_binaries(release)
+    kept = []
+
+    for e in extra:
+        if e not in supported:
+            _log.debug("Ignoring unknown or unsupported extra binary package '%s'", e)
+            continue
+        if platform is not None and platform not in supported[e]:
+            _log.debug(
+                "Ignoring extra binary package '%s' for unsupported platform '%s'",
+                e,
+                platform,
+            )
+            continue
+        kept.append(e)
+
+    return tuple(kept)
+
+
+def _create_download_package(
+    release, platform, to_path, url, extra, extras_only, library_only
+):
+    major = release_major(release)
+    extra = _normalize_extras(extra, release)
+
     pname = []
     ptar = []
     ftar = []
@@ -165,20 +212,18 @@ def _create_download_package(platform, to_path, url, extra, extras_only, library
         pname.append(name)
         furl.append("/".join([url, f]))
 
-    for e in extra:
-        if e not in extra_binaries:
-            _log.warning(f"Unknown extra package {e}, not installed.")
-            continue
-        if platform not in extra_binaries[e]:
-            _log.warning(
-                f"Extra package {e} not available for {platform}, not installed."
-            )
-            continue
-        _add_pack(e)  # you have to explicitly ask for extras so assume you want
-    if not extras_only:
-        _add_pack("lib")
-    if not library_only and not extras_only:
-        _add_pack("solvers")
+    if major >= 4:
+        if not extras_only:
+            if not library_only:
+                _add_pack("solvers")
+            _add_pack("functions")
+    else:
+        if not extras_only:
+            if not library_only:
+                _add_pack("solvers")
+            _add_pack("lib")
+        for e in extra:
+            _add_pack(e)
 
     return pname, ptar, ftar, furl
 
@@ -193,7 +238,7 @@ def _download_package(fd, name, frm, to, platform):
     except urllib.error.HTTPError:
         # PYLINT-TODO
         # pylint: disable-next=broad-exception-raised
-        raise Exception(f"{name} binaries are unavailable for {platform}")
+        raise Exception(f"{name} binaries are unavailable for {platform}.")
 
 
 def _verify_checksums(checksum, pname, ptar, ftar):
@@ -351,6 +396,8 @@ def download_binaries(
         _log.setLevel(idaeslog.DEBUG)
     if no_download:
         nochecksum = True
+    if release is None:
+        release = idaes.config.default_binary_release
 
     # set the locations to download files to, to_path is an alternate
     # subdirectory of idaes.data_directory that can optionally be used to test
@@ -360,7 +407,10 @@ def download_binaries(
     if alt_path is not None:
         to_path = os.path.abspath(alt_path)
     if to_path is None:
-        to_path = idaes.bin_directory
+        if release_major(release) >= 4:
+            to_path = idaes.data_directory
+        else:
+            to_path = idaes.bin_directory
     else:
         to_path = os.path.join(idaes.data_directory, to_path)
     idaes._create_bin_dir(to_path)
@@ -372,7 +422,7 @@ def download_binaries(
     arch, platform = _get_arch_and_platform(  # pylint: disable=unused-variable
         fd, platform
     )
-    platform = _get_release_platform(platform)
+    platform = _get_release_platform(platform, release=release)
 
     # Get release url
     url = _get_release_url(release, url)
@@ -382,7 +432,7 @@ def download_binaries(
 
     # Set the binary file destinations
     pname, ptar, ftar, furl = _create_download_package(
-        platform, to_path, url, extra, extras_only, library_only
+        release, platform, to_path, url, extra, extras_only, library_only
     )
 
     if no_download:
