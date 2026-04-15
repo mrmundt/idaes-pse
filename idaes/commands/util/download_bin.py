@@ -235,10 +235,10 @@ def _download_package(fd, name, frm, to, platform):
 
     try:
         fd.get_binary_file(frm)
-    except urllib.error.HTTPError:
+    except urllib.error.HTTPError as e:
         # PYLINT-TODO
         # pylint: disable-next=broad-exception-raised
-        raise Exception(f"{name} binaries are unavailable for {platform}.")
+        raise Exception(f"{name} binaries are unavailable for {platform}. \nError: {e}")
 
 
 def _verify_checksums(checksum, pname, ptar, ftar):
