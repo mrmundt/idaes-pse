@@ -78,6 +78,20 @@ def test_get_release_platform_mapping():
         if mach == "x86_64" and m == "darwin":
             continue
         output = dlb._get_release_platform(p, test_release_3)
+        if m in ["el9", "ubuntu2404"]:
+            assert output.startswith("ubuntu2204")
+            continue
+        assert output.startswith(m)
+        assert output in idaes_config.base_platforms
+
+
+@pytest.mark.unit
+def test_get_release_platform_mapping_v4():
+    mach = idaes.config.canonical_arch(machine(), test_release_4)
+    for p, m in idaes_config.binary_distro_map.items():
+        if mach == "aarch64" and m == "el7":
+            continue
+        output = dlb._get_release_platform(p, test_release_4)
         assert output.startswith(m)
         assert output in idaes_config.base_platforms
 

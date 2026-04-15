@@ -99,7 +99,7 @@ def _get_release_platform(platform, release):
     platform = _map_legacy_distro(platform, release)
 
     # Get machine type (e.g. x86_64, ...)
-    mach = idaes.config.canonical_arch(machine(), release=release)
+    mach = idaes.config.canonical_arch(machine(), release=release, platform=platform)
 
     # full platform name
     platform = f"{platform}-{mach}"

@@ -115,30 +115,30 @@ def release_major(release):
     return int(release.split(".", maxsplit=1)[0])
 
 
-def canonical_arch(arch, release=None):
-    """Get the official machine type in {x86_64, aarch64} if possible, otherwise
-    just return arch.lower().
+def canonical_arch(arch, release=None, platform=None):
+    """Get the official machine type in {x86_64, aarch64, arm64} if possible,
+    otherwise just return arch.lower().
 
     Args:
         arch (str): machine type string usually from platform.machine()
-        release (str): to support the new major release, this is an
-                       optional argument to allow more dynamic assignment
-                       (specifically for MacOS)
+        release (str): optional release string for release-specific mapping
+        platform (str): optional platform/distro/OS string for platform-specific mapping
 
     Returns (str):
         Canonical machine type used by the binary package names.
     """
     arch = arch.lower()
+    major = release_major(release) if release is not None else None
+    platform = platform.lower() if platform is not None else None
+
+    # arm64 needs special handling: in 4.x only darwin uses arm64 artifact names.
+    if arch == "arm64":
+        if major is not None and major >= 4 and platform in ("darwin", "macos"):
+            return "arm64"
+        return "aarch64"
 
     if arch in binary_arch_map:
         return binary_arch_map[arch]
-
-    major = release_major(release) if release is not None else None
-
-    if arch == "arm64":
-        if major is not None and major >= 4:
-            return "arm64"
-        return "aarch64"
 
     return arch
 

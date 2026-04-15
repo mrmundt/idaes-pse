@@ -186,7 +186,7 @@ def print_build_info(release):
     _, platform = idaes.commands.util.download_bin._get_arch_and_platform(fd, "auto")
     arch = machine()
     to_platform = canonical_distro(platform)
-    to_mach = canonical_arch(arch, release)
+    to_mach = canonical_arch(arch, release=release, platform=to_platform)
     to_build = f"{to_platform}-{to_mach}"
     has_build = to_build in base_platforms
 

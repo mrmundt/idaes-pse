@@ -121,7 +121,10 @@ def test_canonical_arch():
     assert idaes.config.canonical_arch("AMD64") == "x86_64"
     assert idaes.config.canonical_arch("ARM64") == "aarch64"
     # If we provide a release, it should kick in some extra logic
-    assert idaes.config.canonical_arch("ARM64", release="4.0.1") == "arm64"
+    assert (
+        idaes.config.canonical_arch("ARM64", release="4.0.1", platform="darwin")
+        == "arm64"
+    )
 
 
 @pytest.mark.unit
