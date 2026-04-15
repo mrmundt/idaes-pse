@@ -764,6 +764,15 @@ def get_data_directory():
     return data_directory, bin_directory, testing_directory
 
 
+def _merge_env_path(existing, new, prepend):
+    if not existing:
+        return new
+    elif prepend:
+        return os.pathsep.join([new, existing])
+    else:
+        return os.pathsep.join([existing, new])
+
+
 def setup_environment(bin_directory, use_idaes_solvers):
     """
     Set environment variables for the IDAES session.
@@ -771,7 +780,7 @@ def setup_environment(bin_directory, use_idaes_solvers):
     Args:
         bin_directory: directory to find idaes libraries and executables.
         use_idaes_solvers: If true look first in the idaes bin directory for
-                           executables if false look last in the idaes bin
+                           executables; if false look last in the idaes bin
                            directory for executables.
 
     Returns:
@@ -779,37 +788,32 @@ def setup_environment(bin_directory, use_idaes_solvers):
     """
     if bin_directory is None:
         return
+
+    oe = orig_environ
+
     # With the newest IDAES solvers (4.x+), they aren't in a flat bin structure.
     # They follow a standard install prefix structure of bin, lib, share, etc.
     # So we need to step up one level to define the lib_directory.
     lib_directory = os.path.join(os.path.dirname(bin_directory), "lib")
-    lib_directory_exists = os.path.isdir(lib_directory)
-    oe = orig_environ
-    if use_idaes_solvers:
-        # Windows needs lib_directory added to the PATH, if it exists.
-        # This is a minimally invasive way to do this that accounts for both
-        # old-structure and new-structure solvers.
-        if os.name == "nt" and lib_directory_exists:
-            os.environ["PATH"] = os.pathsep.join(
-                [bin_directory, lib_directory, oe.get("PATH", "")]
-            )
-        else:
-            os.environ["PATH"] = os.pathsep.join([bin_directory, oe.get("PATH", "")])
-    else:
-        if os.name == "nt" and lib_directory_exists:
-            os.environ["PATH"] = os.pathsep.join(
-                [oe.get("PATH", ""), bin_directory, lib_directory]
-            )
-        else:
-            os.environ["PATH"] = os.pathsep.join([oe.get("PATH", ""), bin_directory])
+    if not os.path.isdir(lib_directory):
+        lib_directory = bin_directory
 
-    if os.name != "nt":  # If not Windows set lib search path, Windows uses PATH
-        if not lib_directory_exists:
-            lib_directory = bin_directory
-        os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [oe.get("LD_LIBRARY_PATH", ""), lib_directory]
+    if os.name == "nt":
+        # Windows needs special treatment because both bin and library
+        # need to be on the PATH
+        path = oe.get("PATH", "")
+        if lib_directory != bin_directory:
+            path = _merge_env_path(path, lib_directory, use_idaes_solvers)
+        path = _merge_env_path(path, bin_directory, use_idaes_solvers)
+        os.environ["PATH"] = path
+    else:
+        os.environ["PATH"] = _merge_env_path(
+            oe.get("PATH", ""), bin_directory, use_idaes_solvers
+        )
+        os.environ["LD_LIBRARY_PATH"] = _merge_env_path(
+            oe.get("LD_LIBRARY_PATH", ""), lib_directory, use_idaes_solvers
         )
         # This is for macOS, but won't hurt other UNIX
-        os.environ["DYLD_LIBRARY_PATH"] = os.pathsep.join(
-            [oe.get("DYLD_LIBRARY_PATH", ""), lib_directory]
+        os.environ["DYLD_LIBRARY_PATH"] = _merge_env_path(
+            oe.get("DYLD_LIBRARY_PATH", ""), lib_directory, use_idaes_solvers
         )

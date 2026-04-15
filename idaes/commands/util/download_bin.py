@@ -258,7 +258,7 @@ def _splitpath(path):
 
     This routine is similar to str.split(), except when the pieces are
     re-joined by os.path.join(), the result will still be an absolute
-    path (if ``path`` was an absolute path).  Note that the path
+    path (if ``path`` was an absolute path). Note that the path
     elements are returned in reverse order (which is convenient for
     _resolve_path below)
 
@@ -313,10 +313,10 @@ def _verify_tar_member_targets(tar, to_path, links=None):
 
     Nominally, this would be a simple task: verify that every member of
     the tarfile (when converted to an absolute path and normalized)
-    starts with the to_path.  Unfortunately, symbolic links make this
-    more difficult.  It is not sufficient to just check the absolute
+    starts with the to_path. Unfortunately, symbolic links make this
+    more difficult. It is not sufficient to just check the absolute
     path of the link target, as sequences of links could walk out of the
-    target space.  In this routine, we attempt to identify symbolic
+    target space. In this routine, we attempt to identify symbolic
     links and resolve the actual location where each tar member would be
     stored on the filesystem.
 
@@ -338,7 +338,7 @@ def _verify_tar_member_targets(tar, to_path, links=None):
     links : dict[str, tuple[bytes, str]]
         dictionary that records "virtual" symbolic links; that is,
         symbolic links in the tarfile that have not yet been extracted,
-        but will exist during / after the extraction process.  This maps
+        but will exist during / after the extraction process. This maps
         the actual symbolic link location to a (type, target) tuple.
         The target is a resolved (absolute) path for hard links and a
         potentially relative path for soft links.
@@ -364,6 +364,35 @@ def _verify_tar_member_targets(tar, to_path, links=None):
             links[member_path] = (member.type, member.linkname)
         elif member.islnk() and member.name != member.linkname:
             links[member_path] = (member.type, os.path.join(to_path, member.linkname))
+
+
+def _warn_if_libraries_exist(release):
+    """
+    Warn when installing 4.x+ extensions over an environment that appears to
+    contain an older flat-layout binary installation.
+
+    In older releases, shared libraries lived directly in idaes.bin_directory.
+    In 4.x+, libraries move to idaes.data_directory/lib while executables remain
+    in idaes.data_directory/bin. If old files are still present in the old bin
+    directory, users may encounter overwritten binaries or runtime linking issues.
+    """
+    if release_major(release) < 4:
+        return
+
+    old_lib = os.path.join(idaes.bin_directory, "libpynumero_ASL.dylib")
+    if os.path.exists(old_lib):
+        # Setting this as error so it shows up by default. It's really a warning
+        # but I don't think it's worth it to change the logging level of the
+        # whole system just to print this message as a warning to then immediately
+        # change it back.
+        _log.error(
+            "Existing pre-4.x extension files were detected in %s. "
+            "IDAES 4.x+ extensions use a different install layout and may "
+            "overwrite existing binaries or conflict with older libraries. "
+            "Consider removing old extension files from %s before installing.",
+            idaes.bin_directory,
+            idaes.bin_directory,
+        )
 
 
 def download_binaries(
@@ -394,14 +423,16 @@ def download_binaries(
     """
     if verbose:
         _log.setLevel(idaeslog.DEBUG)
-    if no_download:
-        nochecksum = True
     if release is None:
         release = idaes.config.default_binary_release
+    if no_download:
+        nochecksum = True
+    else:
+        _warn_if_libraries_exist(release)
 
     # set the locations to download files to, to_path is an alternate
     # subdirectory of idaes.data_directory that can optionally be used to test
-    # this function without interfering with anything else.  It's a subdirectory
+    # this function without interfering with anything else. It's a subdirectory
     # of the data directory because that should be a safe place to store some
     # test files.
     if alt_path is not None:
