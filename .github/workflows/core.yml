@@ -146,11 +146,17 @@ jobs:
         os:
           - linux
           - win64
+          - macos-arm64
+          - macos-amd64
         include:
           - os: linux
             runner-image: ubuntu-24.04
           - os: win64
             runner-image: windows-2022
+          - os: macos-amd64
+            runner-image: macos-15-intel
+          - os: macos-arm64
+            runner-image: macos-15
 
     steps:
       - uses: actions/checkout@v5
